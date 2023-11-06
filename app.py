@@ -2,6 +2,14 @@ from yahoo_oauth import OAuth2
 import yahoo_fantasy_api as yfa
 import streamlit as st
 import pandas as pd
+import numpy as np
+from PIL import Image
+
+
+Gold_Medal = "🥇"
+Silver_Medal = "🥈"
+Bronze_Medal = "🥉"
+
 
 st.set_page_config(layout="wide")
 
@@ -32,13 +40,16 @@ for i in range(1, lg.current_week() + 1):
 # Step 4: Parse and print the team names
 st.sidebar.title("NBA Super Fantazi")
 
+# Order team_list
 team_options = list(teams_list.keys())
+team_options.sort()
 team_select = st.sidebar.selectbox("Select a team",team_options)
 
 week_options = weeks_list
+
 week_select = st.sidebar.selectbox("Select a week", week_options)
 
-mode_options = ["Alternate Universe", "Total Strength"]
+mode_options = ["Alternate Universe", "Power Rankings", "Medal Board"]
 mode_select = st.sidebar.selectbox("Select mode", mode_options)
 
 week_team_stats = pd.DataFrame(columns=['Team_Name', 'FG', 'FT', 'threePtm', 'Points', 'Rebound', 'Assists', 'Steal', 'Block', 'To', 'Is_Major'],index=range(16))
@@ -205,6 +216,79 @@ def apply_color(dataframe, colors):
     return styled_df
 
 
+def render_medal_board():
+    matchups = lg.matchups(week_select.split(' ')[1])['fantasy_content']['league'][1]['scoreboard']['0']['matchups']
+   
+    league_matchups_list = []
+    for i in range(matchups['count']):
+        #display(pd.json_normalize(matchupss[m]['matchup']))
+        #print(matchups[str(i)]['matchup']['0'])
+        teams = matchups[str(i)]['matchup']['0']['teams']
+        for t in range(teams['count']):
+            val_list = []
+            #print(teams[str(t)]['team'][0][2]) #team name
+            team_data = [teams[str(t)]['team'][0][2]['name']]
+
+            for s in teams[str(t)]['team'][1]['team_stats']['stats']:
+                team_data.append(str(s['stat']['value']))
+
+            league_matchups_list.append(team_data)
+
+    
+    weakly_leaderboard=pd.DataFrame(league_matchups_list,columns=['TeamName','FG','FG%','FT','FT%','3Points','Points','Reb','Ast','St','Blk','To' ]).astype({'TeamName':'object','FG':'object','FG%':'float64','FT':'object','FT%':'float64','3Points':'int64','Points':'int64','Reb':'int64','Ast':'int64','St':'int64','Blk':'int64','To':'int64'})
+    categories = ['3Points','Points','Reb','Ast','St','Blk']
+
+
+    for c in ['FG%', 'FT%']:
+        temp = weakly_leaderboard.sort_values(c,ascending=False).reset_index(drop=True)
+        #temp[c+' '] = temp[c].round(4).astype(str)
+        temp[c+' ']  = temp[c].apply(lambda x: '{0:.3f}'.format(x))
+        temp[c+' '][0] = "{:.3f}".format(temp[c][0]) + Gold_Medal
+        temp[c+' '][1] = "{:.3f}".format(temp[c][0])  + Silver_Medal
+        temp[c+' '][2] = "{:.3f}".format(temp[c][0])  + Bronze_Medal
+    weakly_leaderboard = temp.replace(np.nan,'')
+
+    for c in categories:
+        temp = weakly_leaderboard.sort_values(c,ascending=False).reset_index(drop=True)
+        temp[c+' '] = temp[c]
+        temp[c+' '][0] = str(temp[c][0]) + Gold_Medal
+        temp[c+' '][1] = str(temp[c][1]) + Silver_Medal
+        temp[c+' '][2] = str(temp[c][2]) + Bronze_Medal
+    weakly_leaderboard = temp.replace(np.nan,'')
+    temp = weakly_leaderboard.sort_values('To',ascending=True).reset_index(drop=True)
+    temp['To '] = temp['To']
+    temp['To '][0] =  str(temp['To'][0]) + Gold_Medal
+    temp['To '][1] =  str(temp['To'][1]) + Silver_Medal
+    temp['To '][2] =  str(temp['To'][2]) + Bronze_Medal
+    weakly_leaderboard = temp.replace(np.nan,'')
+    
+    Total_Medals = []
+    Total_Medals_Count = []
+    for i in range(len(weakly_leaderboard)):
+        g_count=0
+        s_count=0
+        b_count = 0
+        for index, value in weakly_leaderboard.iloc[i].items():
+            if Gold_Medal in str(value):
+                g_count +=1
+            if Silver_Medal in str(value):
+                s_count +=1
+            if Bronze_Medal in str(value):
+                b_count +=1
+        Total_Medals_Count.append(g_count * 1.03 + s_count * 1.02 + b_count * 1.01)
+        Total_Medals.append(g_count * Gold_Medal + s_count * Silver_Medal + b_count * Bronze_Medal)
+    weakly_leaderboard['Total'] = pd.Series(Total_Medals)
+    weakly_leaderboard['MedalCount'] = pd.Series(Total_Medals_Count)
+    weakly_leaderboard = weakly_leaderboard.sort_values('MedalCount',ascending=False,ignore_index=True)
+    weakly_leaderboard = weakly_leaderboard.drop('MedalCount', axis=1)
+    weakly_leaderboard['Display_Index'] = weakly_leaderboard.index + 1
+    weakly_leaderboard = weakly_leaderboard.set_index('Display_Index')
+    st.dataframe(weakly_leaderboard, height=600, use_container_width=True)
+
+
+
+
+
 if mode_select == "Alternate Universe":
     matchups = lg.matchups(week=week_select.split(' ')[1])
     week_matchups = matchups['fantasy_content']['league'][1]['scoreboard']['0']['matchups']
@@ -219,7 +303,7 @@ if mode_select == "Alternate Universe":
     st.write( team_select + " " +  week_select + " expected win-lose-tie value (eWLT) is : " + format(ewlt_map["Win"], '.2f') + "-" + format(ewlt_map["Lose"], '.2f') + "-" + format(ewlt_map["Tie"], '.2f'))
 
 
-elif mode_select == "Total Strength":
+elif mode_select == "Power Rankings":
     mini_skirt_df = pd.DataFrame(columns=['Team_Name', 'totaleWLT', 'avgeWLT', 'Score'], index=range(16))
     color_skirt_df = pd.DataFrame(columns=['Team_Name', 'totaleWLT', 'avgeWLT', 'Score'], index=range(16))
     color_skirt_df.fillna("None", inplace=True)
@@ -289,4 +373,8 @@ elif mode_select == "Total Strength":
     df_color_codes = color_skirt_df.applymap(color_map_skirt.get)
     style_cross = mini_skirt_df.style.apply(apply_color, colors=df_color_codes, axis=None)
     st.dataframe(style_cross, height=600, use_container_width=True)
+elif mode_select == "Medal Board":
+    render_medal_board()
+    
+
 
