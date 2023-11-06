@@ -3,6 +3,8 @@ import yahoo_fantasy_api as yfa
 import streamlit as st
 import pandas as pd
 import numpy as np
+from PIL import Image
+
 
 Gold_Medal = "🥇"
 Silver_Medal = "🥈"
@@ -38,13 +40,16 @@ for i in range(1, lg.current_week() + 1):
 # Step 4: Parse and print the team names
 st.sidebar.title("NBA Super Fantazi")
 
+# Order team_list
 team_options = list(teams_list.keys())
+team_options.sort()
 team_select = st.sidebar.selectbox("Select a team",team_options)
 
 week_options = weeks_list
+
 week_select = st.sidebar.selectbox("Select a week", week_options)
 
-mode_options = ["Alternate Universe", "Total Strength", "Medal Board"]
+mode_options = ["Alternate Universe", "Power Rankings", "Medal Board"]
 mode_select = st.sidebar.selectbox("Select mode", mode_options)
 
 week_team_stats = pd.DataFrame(columns=['Team_Name', 'FG', 'FT', 'threePtm', 'Points', 'Rebound', 'Assists', 'Steal', 'Block', 'To', 'Is_Major'],index=range(16))
@@ -213,7 +218,7 @@ def apply_color(dataframe, colors):
 
 def render_medal_board():
     matchups = lg.matchups(week_select.split(' ')[1])['fantasy_content']['league'][1]['scoreboard']['0']['matchups']
-    print("Match count" + str(matchups['count']))
+   
     league_matchups_list = []
     for i in range(matchups['count']):
         #display(pd.json_normalize(matchupss[m]['matchup']))
@@ -276,6 +281,8 @@ def render_medal_board():
     weakly_leaderboard['MedalCount'] = pd.Series(Total_Medals_Count)
     weakly_leaderboard = weakly_leaderboard.sort_values('MedalCount',ascending=False,ignore_index=True)
     weakly_leaderboard = weakly_leaderboard.drop('MedalCount', axis=1)
+    weakly_leaderboard['Display_Index'] = weakly_leaderboard.index + 1
+    weakly_leaderboard = weakly_leaderboard.set_index('Display_Index')
     st.dataframe(weakly_leaderboard, height=600, use_container_width=True)
 
 
@@ -296,7 +303,7 @@ if mode_select == "Alternate Universe":
     st.write( team_select + " " +  week_select + " expected win-lose-tie value (eWLT) is : " + format(ewlt_map["Win"], '.2f') + "-" + format(ewlt_map["Lose"], '.2f') + "-" + format(ewlt_map["Tie"], '.2f'))
 
 
-elif mode_select == "Total Strength":
+elif mode_select == "Power Rankings":
     mini_skirt_df = pd.DataFrame(columns=['Team_Name', 'totaleWLT', 'avgeWLT', 'Score'], index=range(16))
     color_skirt_df = pd.DataFrame(columns=['Team_Name', 'totaleWLT', 'avgeWLT', 'Score'], index=range(16))
     color_skirt_df.fillna("None", inplace=True)
