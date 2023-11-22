@@ -3,14 +3,14 @@ import yahoo_fantasy_api as yfa
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
 
 Gold_Medal = "🥇"
 Silver_Medal = "🥈"
 Bronze_Medal = "🥉"
 
-
 st.set_page_config(layout="wide")
-
 
 # Fetch user's teams
 sc = OAuth2(None, None, from_file='oauth2.json')
@@ -18,8 +18,6 @@ sc = OAuth2(None, None, from_file='oauth2.json')
 league_id = '428.l.17054'
 image = open('logo.png', 'rb').read()
 st.sidebar.image(image, caption='', width=100)
-
-
 
 ##Access token check.
 if not sc.token_is_valid():
@@ -34,31 +32,41 @@ for team_key in teams:
 
 for i in range(1, lg.current_week() + 1):
     weeks_list.append("Week " + str(i))
-#print(lg.end_week())
-#print(len(weeks_list))
+
 # Step 4: Parse and print the team names
 st.sidebar.title("NBA Super Fantazi")
 
 team_options = list(teams_list.keys())
 team_select = st.sidebar.selectbox("Select a team",team_options)
 
-mode_options = ["Alternate Universe", "Alternate Universe - Matchups", "Power Rankings", "Medal Board"]
+mode_options = ["Alternate Universe", "Alternate Universe - Matchups", "Power Rankings", "Medal Board", "Box Plots", "Total Stats"]
 mode_select = st.sidebar.selectbox("Select mode", mode_options)
+
+if mode_select == "Box Plots":
+    boxplot_sub_mode_options = ["Box - Weekly", "Box & SD - Weekly", "Box - Total"]
+    sub_mode_select = st.sidebar.selectbox("Select submode", boxplot_sub_mode_options)
+    if sub_mode_select == "Box - Weekly" or sub_mode_select == "Box & SD - Weekly":
+        week_options = weeks_list
+        week_select = st.sidebar.selectbox("Select a week", week_options)
 
 if mode_select == "Alternate Universe - Matchups":
     matchup_options = list(teams_list.keys())
     matchup_select = st.sidebar.selectbox("Select a matchup", matchup_options)
-elif mode_select == "Alternate Universe" or mode_select == "Medal Board":
-    week_options = weeks_list
-    week_select = st.sidebar.selectbox("Select a week", week_options)
+    cross_points_df = pd.DataFrame(columns=['Week','Team_Name', 'Score', 'FG', 'FT', 'threePtm', 'Points', 'Rebound', 'Assists', 'Steal', 'Block', 'To'], index=range(2))
+    cross_color_df = pd.DataFrame(columns=['Week','Team_Name', 'Score', 'FG', 'FT', 'threePtm', 'Points', 'Rebound', 'Assists', 'Steal', 'Block', 'To'], index=range(2))
+    cross_color_df.fillna("None", inplace=True)
+else:
+    if mode_select == "Alternate Universe" or mode_select == "Medal Board":
+        week_options = weeks_list
+        week_select = st.sidebar.selectbox("Select a week", week_options)
+    cross_points_df = pd.DataFrame(columns=['Team_Name', 'Score', 'FG', 'FT', 'threePtm', 'Points', 'Rebound', 'Assists', 'Steal', 'Block', 'To'], index=range(16)) 
+    cross_color_df = pd.DataFrame(columns=['Team_Name', 'Score', 'FG', 'FT', 'threePtm', 'Points', 'Rebound', 'Assists', 'Steal', 'Block', 'To'], index=range(16))
+    cross_color_df.fillna("None", inplace=True)
 
-week_team_stats = pd.DataFrame(columns=['Team_Name', 'FG', 'FT', 'threePtm', 'Points', 'Rebound', 'Assists', 'Steal', 'Block', 'To', 'Is_Major'],index=range(16))
-cross_points_df = pd.DataFrame(columns=['Team_Name', 'Score', 'FG', 'FT', 'threePtm', 'Points', 'Rebound', 'Assists', 'Steal', 'Block', 'To'], index=range(16))
-cross_points_matchup_df = pd.DataFrame(columns=['Team_Name', 'Score', 'FG', 'FT', 'threePtm', 'Points', 'Rebound', 'Assists', 'Steal', 'Block', 'To'], index=range(len(weeks_list)*2))
-cross_color_df = pd.DataFrame(columns=['Team_Name', 'Score', 'FG', 'FT', 'threePtm', 'Points', 'Rebound', 'Assists', 'Steal', 'Block', 'To'], index=range(16))
-cross_color_df.fillna("None", inplace=True)
+week_team_stats = pd.DataFrame(columns=['Team_Name', 'FGM', 'FGA', 'FG', 'FTM', 'FTA', 'FT', 'threePtm', 'Points', 'Rebound', 'Assists', 'Steal', 'Block', 'To', 'Is_Major'],index=range(16))
+total_team_stats = pd.DataFrame(columns=['Team_Name', 'FGM', 'FGA', 'FG', 'FTM', 'FTA', 'FT', 'threePtm', 'Points', 'Rebound', 'Assists', 'Steal', 'Block', 'To', 'Is_Major'],index=range(16))
+
 other_team = []
-
 
 def get_team_stats(team_name, major_bool = False):
     global other_team
@@ -82,11 +90,16 @@ def get_team_stats(team_name, major_bool = False):
             fg = week_matchups[select]['matchup']['0']['teams'][switch]['team'][1]['team_stats']['stats'][0]['stat'][
                     'value']
             fg = fg.split('/')
+            week_team_stats.loc[idx].FGM = int(fg[0])
+            week_team_stats.loc[idx].FGA = int(fg[1])
+            
             fg = float(int(fg[0]) / int(fg[1]))
             week_team_stats.loc[idx].FG = fg
             ft = week_matchups[select]['matchup']['0']['teams'][switch]['team'][1]['team_stats']['stats'][2]['stat'][
                     'value']
             ft = ft.split('/')
+            week_team_stats.loc[idx].FTM = int(ft[0])
+            week_team_stats.loc[idx].FTA = int(ft[1])
             ft = float(int(ft[0]) / int(ft[1]))
             week_team_stats.loc[idx].FT = ft
             week_team_stats.loc[idx].threePtm = int(week_matchups[select]['matchup']['0']['teams'][switch]['team'][1]['team_stats']['stats'][4]['stat'][
@@ -106,14 +119,49 @@ def get_team_stats(team_name, major_bool = False):
             idx += 1
 
     return week_team_stats
+def get_total_team_stats(team_name, major_bool = True):
+    
+    global week_matchups
+    global total_team_stats
+    global weekly_team_stats
+    i=0
+    for team in teams_list:
+        total_team_stats.loc[i].Team_Name = team
+        i += 1
+    total_team_stats.fillna("0", inplace=True)
+
+    for week in weeks_list:
+        matchups = lg.matchups(week=week.split(' ')[1])
+        week_matchups = matchups['fantasy_content']['league'][1]['scoreboard']['0']['matchups']
+        weekly_team_stats = get_team_stats(team_select, major_bool=True)
+        for index, row in weekly_team_stats.iterrows():
+            for idx in range(0,16):
+                if total_team_stats.loc[idx].Team_Name == row['Team_Name']:
+                    total_team_stats.loc[idx].FGM = int(total_team_stats.loc[idx].FGM) + row['FGM']
+                    total_team_stats.loc[idx].FGA = int(total_team_stats.loc[idx].FGA) + row['FGA']
+                    total_team_stats.loc[idx].FTM = int(total_team_stats.loc[idx].FTM) + row['FTM']
+                    total_team_stats.loc[idx].FTA = int(total_team_stats.loc[idx].FTA) + row['FTA']
+                    total_team_stats.loc[idx].threePtm = int(total_team_stats.loc[idx].threePtm) + row['threePtm']
+                    total_team_stats.loc[idx].Points = int(total_team_stats.loc[idx].Points) + row['Points']
+                    total_team_stats.loc[idx].Rebound = int(total_team_stats.loc[idx].Rebound) + row['Rebound']
+                    total_team_stats.loc[idx].Assists = int(total_team_stats.loc[idx].Assists) + row['Assists']
+                    total_team_stats.loc[idx].Steal = int(total_team_stats.loc[idx].Steal) + row['Steal']
+                    total_team_stats.loc[idx].Block = int(total_team_stats.loc[idx].Block) + row['Block']
+                    total_team_stats.loc[idx].To = int(total_team_stats.loc[idx].To) + row['To']
+                    total_team_stats.loc[idx].Is_Major = row['Is_Major']
+                    break
+    for idx in range(0,16):        
+        total_team_stats.loc[idx].FG = format(total_team_stats.loc[idx].FGM / total_team_stats.loc[idx].FGA , '.3f')
+        total_team_stats.loc[idx].FT = format(total_team_stats.loc[idx].FTM / total_team_stats.loc[idx].FTA , '.3f')
+    
+    return total_team_stats
+
 def calculate_weekly_score(t1,t2,idx):
     t1 = pd.DataFrame(t1).reset_index(drop=True)
     t2 = pd.DataFrame(t2).transpose().reset_index(drop=True)
-    print(t1)
-    print(t2)
     global cross_color_df
-    t1 = t1.drop(columns=['Team_Name','Is_Major'])
-    t2 = t2.drop(columns=['Team_Name','Is_Major'])
+    t1 = t1.drop(columns=['Team_Name','FGM','FGA','FTA','FTM','Is_Major'])
+    t2 = t2.drop(columns=['Team_Name','FGM','FGA','FTA','FTM','Is_Major'])
     win=0
     lose=0
     tie=0
@@ -122,23 +170,42 @@ def calculate_weekly_score(t1,t2,idx):
         if column == 'To':
             if t1[column][0] < t2[column][0]:
                 win += 1
-                cross_color_df[column].loc[idx] = "Win"
+                if idx == -1:
+                    cross_color_df[column].loc[1] = "Win"
+                else:
+                    cross_color_df[column].loc[idx] = "Win"
+
             elif t1[column][0] > t2[column][0]:
                 lose += 1
-                cross_color_df[column].loc[idx] = "Lose"
+                if idx == -1:
+                    cross_color_df[column].loc[1] = "Lose"
+                else:
+                    cross_color_df[column].loc[idx] = "Lose"
             else:
                 tie += 1
-                cross_color_df[column].loc[idx] = "Tie"
+                if idx == -1:
+                    cross_color_df[column].loc[1] = "Tie"
+                else:                
+                    cross_color_df[column].loc[idx] = "Tie"
         else:
             if t1[column][0] > t2[column][0]:
                 win += 1
-                cross_color_df[column].loc[idx] = "Win"
+                if idx == -1:
+                    cross_color_df[column].loc[1] = "Win"
+                else:                
+                    cross_color_df[column].loc[idx] = "Win"
             elif t1[column][0] < t2[column][0]:
                 lose += 1
-                cross_color_df[column].loc[idx] = "Lose"
+                if idx == -1:
+                    cross_color_df[column].loc[1] = "Lose"
+                else:                
+                    cross_color_df[column].loc[idx] = "Lose"
             else:
                 tie += 1
-                cross_color_df[column].loc[idx] = "Tie"
+                if idx == -1:
+                    cross_color_df[column].loc[1] = "Tie"
+                else:                
+                    cross_color_df[column].loc[idx] = "Tie"
     return str(win) + "-" + str(lose) + "-" + str(tie)
 def get_cross_map():
     global cross_points_df
@@ -177,13 +244,11 @@ def get_cross_map():
 
 def get_cross_map_matchup():
 
-    global cross_points_matchup_df
+    global cross_points_df
+    global cross_color_df
     global matchup_select
     global week_matchups
 
-    idx = 0
-    idy = 0
-    idz = 0
     for week in weeks_list:
         matchups = lg.matchups(week=week.split(' ')[1])
         week_matchups = matchups['fantasy_content']['league'][1]['scoreboard']['0']['matchups']
@@ -191,39 +256,40 @@ def get_cross_map_matchup():
 
         major_df = weekly_team_stats.loc[weekly_team_stats['Is_Major'] == True]
         major_df = major_df.reset_index(drop=True)
-        
-        idy = 0+2*idx
-        cross_points_matchup_df.loc[idy].Team_Name = major_df['Team_Name'][0]
-        cross_points_matchup_df.loc[idy].Score = "-"
-        cross_points_matchup_df.loc[idy].FG = format(major_df['FG'][0], '.3f')
-        cross_points_matchup_df.loc[idy].FT = format(major_df['FT'][0], '.3f')
-        cross_points_matchup_df.loc[idy].threePtm = major_df['threePtm'][0]
-        cross_points_matchup_df.loc[idy].Points = major_df['Points'][0]
-        cross_points_matchup_df.loc[idy].Rebound = major_df['Rebound'][0]
-        cross_points_matchup_df.loc[idy].Assists = major_df['Assists'][0]
-        cross_points_matchup_df.loc[idy].Steal = major_df['Steal'][0]
-        cross_points_matchup_df.loc[idy].Block = major_df['Block'][0]
-        cross_points_matchup_df.loc[idy].To = major_df['To'][0]
 
-        idz = idy +1
+        cross_points_df.loc[0].Week = week
+        cross_points_df.loc[0].Team_Name = major_df['Team_Name'][0]
+        cross_points_df.loc[0].Score = "-"
+        cross_points_df.loc[0].FG = format(major_df['FG'][0], '.3f')
+        cross_points_df.loc[0].FT = format(major_df['FT'][0], '.3f')
+        cross_points_df.loc[0].threePtm = major_df['threePtm'][0]
+        cross_points_df.loc[0].Points = major_df['Points'][0]
+        cross_points_df.loc[0].Rebound = major_df['Rebound'][0]
+        cross_points_df.loc[0].Assists = major_df['Assists'][0]
+        cross_points_df.loc[0].Steal = major_df['Steal'][0]
+        cross_points_df.loc[0].Block = major_df['Block'][0]
+        cross_points_df.loc[0].To = major_df['To'][0]
+        
         for index, row in weekly_team_stats.iterrows():
             if row['Team_Name'] == matchup_select:
-                cross_points_matchup_df.loc[idz].Team_Name = row['Team_Name']
-                cross_points_matchup_df.loc[idz].Score = calculate_weekly_score(major_df, row, idz)
-                cross_points_matchup_df.loc[idz].FG = format(row['FG'], '.3f')
-                cross_points_matchup_df.loc[idz].FT = format(row['FT'], '.3f')
-                cross_points_matchup_df.loc[idz].threePtm = row['threePtm']
-                cross_points_matchup_df.loc[idz].Points = row['Points']
-                cross_points_matchup_df.loc[idz].Rebound = row['Rebound']
-                cross_points_matchup_df.loc[idz].Assists = row['Assists']
-                cross_points_matchup_df.loc[idz].Steal = row['Steal']
-                cross_points_matchup_df.loc[idz].Block = row['Block']
-                cross_points_matchup_df.loc[idz].To = row['To']
-
-        idx += 1
-
-    print(cross_points_matchup_df)
-    return cross_points_matchup_df
+                cross_points_df.loc[1].Week = ""
+                cross_points_df.loc[1].Team_Name = row['Team_Name']
+                cross_points_df.loc[1].Score = calculate_weekly_score(major_df, row, -1)
+                cross_points_df.loc[1].FG = format(row['FG'], '.3f')
+                cross_points_df.loc[1].FT = format(row['FT'], '.3f')
+                cross_points_df.loc[1].threePtm = row['threePtm']
+                cross_points_df.loc[1].Points = row['Points']
+                cross_points_df.loc[1].Rebound = row['Rebound']
+                cross_points_df.loc[1].Assists = row['Assists']
+                cross_points_df.loc[1].Steal = row['Steal']
+                cross_points_df.loc[1].Block = row['Block']
+                cross_points_df.loc[1].To = row['To']
+        
+        df_color_codes = cross_color_df.map(color_map.get)
+        style_cross = cross_points_df.style.apply(apply_color, colors=df_color_codes, axis=None)
+        st.dataframe(style_cross, height=109, use_container_width=True)
+        
+    return cross_points_df
 
 def ewlt_get(cross_map):
     vals = cross_map.loc[1:].Score.tolist()
@@ -242,13 +308,17 @@ def ewlt_get(cross_map):
     ewlt['Tie'] = t
     return ewlt
 
-
 color_map = {
     'Win': '#006400',
     'Lose': '#800000',
     'Tie': '#9ACD32',
     'None': '#0E1117',
     'Match': "#00008B"
+}
+
+color_map_total = {
+        'None': '#0E1117',
+        'Match': "#00008B"
 }
 
 def update_other_team_color():
@@ -259,7 +329,6 @@ def update_other_team_color():
     idx = cross_points_df[cross_points_df['Team_Name'] == other_team].index
     cross_color_df.loc[idx, 'Team_Name'] = "Match"
     cross_color_df.loc[idx, 'Score'] = "Match"
-    print(cross_points_df)
 
 def apply_color(dataframe, colors):
     styled_df = pd.DataFrame('', index=dataframe.index, columns=dataframe.columns)
@@ -267,7 +336,6 @@ def apply_color(dataframe, colors):
         for col in styled_df.columns:
             styled_df.at[row, col] = f'background-color: {colors.at[row, col]}'
     return styled_df
-
 
 def render_medal_board():
     matchups = lg.matchups(week_select.split(' ')[1])['fantasy_content']['league'][1]['scoreboard']['0']['matchups']
@@ -299,7 +367,7 @@ def render_medal_board():
         temp[c+' '][0] = "{:.3f}".format(temp[c][0]) + Gold_Medal
         temp[c+' '][1] = "{:.3f}".format(temp[c][0])  + Silver_Medal
         temp[c+' '][2] = "{:.3f}".format(temp[c][0])  + Bronze_Medal
-    weakly_leaderboard = temp.replace(np.nan,'')
+        weakly_leaderboard = temp.replace(np.nan,'')
 
     for c in categories:
         temp = weakly_leaderboard.sort_values(c,ascending=False).reset_index(drop=True)
@@ -307,7 +375,7 @@ def render_medal_board():
         temp[c+' '][0] = str(temp[c][0]) + Gold_Medal
         temp[c+' '][1] = str(temp[c][1]) + Silver_Medal
         temp[c+' '][2] = str(temp[c][2]) + Bronze_Medal
-    weakly_leaderboard = temp.replace(np.nan,'')
+        weakly_leaderboard = temp.replace(np.nan,'')
     temp = weakly_leaderboard.sort_values('To',ascending=True).reset_index(drop=True)
     temp['To '] = temp['To']
     temp['To '][0] =  str(temp['To'][0]) + Gold_Medal
@@ -334,6 +402,7 @@ def render_medal_board():
     weakly_leaderboard['MedalCount'] = pd.Series(Total_Medals_Count)
     weakly_leaderboard = weakly_leaderboard.sort_values('MedalCount',ascending=False,ignore_index=True)
     weakly_leaderboard = weakly_leaderboard.drop('MedalCount', axis=1)
+    weakly_leaderboard = weakly_leaderboard.drop(columns=['FG','FG%','FT','FT%','3Points','Points','Reb','Ast','St','Blk','To'])
     st.dataframe(weakly_leaderboard, height=600, use_container_width=True)
 
 if mode_select == "Alternate Universe":
@@ -357,11 +426,9 @@ elif mode_select == "Power Rankings":
     hard_dict = {}
     for week in weeks_list:
         matchups = lg.matchups(week=week.split(' ')[1])
-        
         week_matchups = matchups['fantasy_content']['league'][1]['scoreboard']['0']['matchups']
-        
         weekly_team_stats = get_team_stats("", major_bool=False)
-        print(weekly_team_stats)
+
         for team in teams_list:
             chg_idx = week_team_stats[weekly_team_stats['Team_Name'] == team].index
             weekly_team_stats.loc[chg_idx, 'Is_Major'] = True
@@ -409,17 +476,14 @@ elif mode_select == "Power Rankings":
         mini_skirt_df.loc[idx].Score = scores['Total']
         idx += 1
 
-    color_map_skirt = {
-        'None': '#0E1117',
-        'Match': "#00008B"
-    }
+
 
     mini_skirt_df = mini_skirt_df.sort_values(by=['Score'], ascending=False)
     mini_skirt_df = mini_skirt_df.reset_index(drop=True)
     mini_skirt_df['Score'] = mini_skirt_df['Score'].map('{:.2f}'.format)
     chg = mini_skirt_df[mini_skirt_df['Team_Name'] == team_select].index
     color_skirt_df.loc[chg] = "Match"
-    df_color_codes = color_skirt_df.applymap(color_map_skirt.get)
+    df_color_codes = color_skirt_df.applymap(color_map_total.get)
     style_cross = mini_skirt_df.style.apply(apply_color, colors=df_color_codes, axis=None)
     st.dataframe(style_cross, height=600, use_container_width=True)
 elif mode_select == "Medal Board":
@@ -428,10 +492,50 @@ elif mode_select == "Medal Board":
 elif mode_select == "Alternate Universe - Matchups":
 
     get_cross_map_matchup()
-    print(cross_color_df)
-    df_color_codes = cross_color_df.applymap(color_map.get)
-    style_cross = cross_points_matchup_df.style.apply(apply_color, colors=df_color_codes, axis=None)
-    st.dataframe(style_cross, height=600, use_container_width=True)
+
     ##Expected WLT eWLT Calculate
     #ewlt_map = ewlt_get(cross_points_df)
     #st.write( team_select + " " +  week_select + " expected win-lose-tie value (eWLT) is : " + format(ewlt_map["Win"], '.2f') + "-" + format(ewlt_map["Lose"], '.2f') + "-" + format(ewlt_map["Tie"], '.2f'))
+
+elif mode_select == "Box Plots":
+    
+    if sub_mode_select == "Box - Weekly" or sub_mode_select == "Box & SD - Weekly":
+        matchups = lg.matchups(week=week_select.split(' ')[1])
+        week_matchups = matchups['fantasy_content']['league'][1]['scoreboard']['0']['matchups']
+        team_stats = get_team_stats(team_select, major_bool = True)
+        title = " - Week "+week_select.split(' ')[1]
+        if sub_mode_select == "Box - Weekly":
+            boxMean = True
+        else:
+            boxMean = "sd"
+    elif sub_mode_select == "Box - Total":
+        team_stats = get_total_team_stats(team_select, major_bool = True)
+        title = " - Total"
+        boxMean = True
+    #team_stats = team_stats.drop(columns=['FGM','FGA','FTA','FTM'])
+
+    major_df = team_stats.loc[team_stats['Is_Major'] == True]
+    major_df = major_df.reset_index(drop=True)
+
+    categoies = {0: 'Team_Name', 1:'FG', 2:'FT', 3:'threePtm', 4:'Points', 5:'Rebound', 6:'Assists', 7:'Steal', 8:'Block', 9:'To'}
+
+    for i in range(1, 10):
+        fig = go.Figure()
+        fig.add_trace(go.Box(y=team_stats[categoies[i]], name= categoies[i]+title, boxmean=boxMean))
+        highlight_trace = go.Scatter(x=[major_df.loc[0].Team_Name],y=[major_df[categoies[i]][0]],mode='markers', marker=dict(size=10, color='red'),name=major_df[categoies[0]][0])
+        fig.add_trace(highlight_trace)
+        st.plotly_chart(fig, use_container_width=False, theme="streamlit")
+
+elif mode_select == "Total Stats":
+    
+    color_total_df = pd.DataFrame(columns=['Team_Name', 'FGM', 'FGA', 'FG', 'FTM', 'FTA', 'FT', 'threePtm', 'Points', 'Rebound', 'Assists', 'Steal', 'Block', 'To'],index=range(16))    
+    color_total_df.fillna("None", inplace=True)
+    
+    team_stats = get_total_team_stats(team_select, major_bool = True)
+    team_stats = team_stats.drop(columns=['Is_Major'])
+    
+    chg = team_stats[team_stats['Team_Name'] == team_select].index
+    color_total_df.loc[chg] = "Match"
+    df_color_codes = color_total_df.map(color_map_total.get)
+    style_cross = team_stats.style.apply(apply_color, colors=df_color_codes, axis=None)
+    st.dataframe(style_cross, height=600, use_container_width=True)
